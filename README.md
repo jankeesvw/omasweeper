@@ -181,6 +181,7 @@ purpose so a test can play a game out to a win.
 | `tools/make-sounds.py` | Regenerates them |
 | `bin/omasweeper-play` | Picks a player and plays one file |
 | `icon.svg` | Launcher icon |
+| `preview.png` | Marketplace preview |
 | `~/.local/state/omasweeper/state.json` | Saved game, difficulty, mute, best times |
 
 ## Licence
