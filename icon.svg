@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- A cell of the board, with a mine in it: the same three bars through one
+       centre that the game draws, so the launcher entry looks like the thing
+       it opens. -->
+  <rect width="64" height="64" rx="12" fill="#1a1b26"/>
+  <g stroke="#2f3345" stroke-width="2">
+    <path d="M8 24h48M8 40h48M24 8v48M40 8v48"/>
+  </g>
+  <g stroke="#f7768e" stroke-width="6" stroke-linecap="round">
+    <path d="M32 20v24"/>
+    <path d="M21.6 26l20.8 12"/>
+    <path d="M21.6 38l20.8-12"/>
+  </g>
+</svg>

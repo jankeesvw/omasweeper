@@ -39,11 +39,19 @@ Or with the installer, which does the same thing and places the bar icon:
 ./install.sh
 ```
 
-Then click the ⚑ in the bar, or bind a key to:
+Then search for **Omasweeper** in the launcher, click the ⚑ in the bar, or
+bind a key to:
 
 ```bash
 omarchy-shell shell toggle jankeesvw.omasweeper
 ```
+
+A shell plugin is not an application, so nothing gives it a launcher entry on
+its own: `omarchy plugin add` registers code inside the shell process, and the
+launcher only indexes `.desktop` files. `install.sh` writes one to
+`~/.local/share/applications/omasweeper.desktop` whose `Exec` is the same
+toggle the bar icon runs. Adding the plugin without the installer leaves it
+out of the launcher, which is a one-file fix if you want it back.
 
 `install.sh` takes two optional overrides: `OMASWEEPER_SECTION` picks the bar
 section (`left`, `center` or `right`, default `right`), and `OMASWEEPER_REPO`
@@ -172,6 +180,7 @@ purpose so a test can play a game out to a win.
 | `sounds/` | The seven square waves |
 | `tools/make-sounds.py` | Regenerates them |
 | `bin/omasweeper-play` | Picks a player and plays one file |
+| `icon.svg` | Launcher icon |
 | `~/.local/state/omasweeper/state.json` | Saved game, difficulty, mute, best times |
 
 ## Licence

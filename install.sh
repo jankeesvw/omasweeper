@@ -50,6 +50,27 @@ omarchy plugin enable "$PLUGIN_ID" --section "$SECTION" || true
 # center regardless of defaultSection, so place it explicitly afterwards.
 omarchy bar move "$PLUGIN_ID" --section "$SECTION" >/dev/null 2>&1 || true
 
+# A shell plugin is not an app, so nothing puts it in the launcher. This does:
+# a desktop entry whose Exec is the same toggle the bar icon runs.
+PLUGIN_DIR="$HOME/.config/omarchy/plugins/${PLUGIN_ID}"
+APPS_DIR="$HOME/.local/share/applications"
+say "==> Adding the launcher entry"
+mkdir -p "$APPS_DIR"
+cat > "$APPS_DIR/omasweeper.desktop" <<DESKTOP
+[Desktop Entry]
+Type=Application
+Name=Omasweeper
+Comment=Minesweeper for the Omarchy shell
+Exec=omarchy-shell shell toggle ${PLUGIN_ID}
+Icon=${PLUGIN_DIR}/icon.svg
+Terminal=false
+Categories=Game;LogicGame;
+StartupNotify=false
+DESKTOP
+command -v update-desktop-database >/dev/null 2>&1 &&
+  update-desktop-database "$APPS_DIR" >/dev/null 2>&1 || true
+
 say ""
-say "Done. Click the ⚑ in the bar, or bind a key to:"
+say "Done. Search for Omasweeper in the launcher, click the ⚑ in the bar, or"
+say "bind a key to:"
 say "  omarchy-shell shell toggle ${PLUGIN_ID}"
