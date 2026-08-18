@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "jankeesvw.omasweeper",
+  "name": "Omasweeper",
+  "version": "1.0.0",
+  "author": "Jankees",
+  "license": "MIT",
+  "description": "Minesweeper for omarchy-shell, drawn like a TUI: a character grid on hairlines, base-36 gutter labels, ANSI numbers and a status bar. Opens as an ordinary tiled window, is fully keyboard accessible, makes 8-bit noises, and keeps the game in progress across a shell restart. Summon with: omarchy-shell shell toggle jankeesvw.omasweeper",
+  "kinds": [
+    "panel",
+    "bar-widget"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "panel": "Panel.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Omasweeper",
+    "description": "Bar icon that toggles the Omasweeper window",
+    "category": "Fun",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}

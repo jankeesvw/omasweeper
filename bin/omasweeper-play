@@ -1,0 +1,15 @@
+#!/usr/bin/env sh
+# Play one short sound with whatever this system has. The player is chosen at
+# play time rather than at install time, so moving between PipeWire and
+# PulseAudio needs no reinstall, and a machine with neither stays silent
+# instead of erroring once per click.
+f=$1
+[ -f "$f" ] || exit 0
+if command -v pw-play >/dev/null 2>&1; then
+  exec pw-play --volume=0.5 "$f"
+elif command -v paplay >/dev/null 2>&1; then
+  exec paplay "$f"
+elif command -v aplay >/dev/null 2>&1; then
+  exec aplay -q "$f"
+fi
+exit 0
