@@ -9,8 +9,12 @@ Nothing is bundled but seven small square-wave sounds. The board, the mines
 and the flags are all drawn from the active Omarchy theme, so the whole thing
 recolours with the desktop.
 
-![Omasweeper on a dark theme](screenshots/dark.png)
-![Omasweeper on a light theme](screenshots/light.png)
+The same lost board under three Omarchy themes, which is the whole point of
+drawing it from the palette rather than pinning colours:
+
+| | | |
+| --- | --- | --- |
+| ![Dark theme](screenshots/dark.png) | ![Light theme](screenshots/light.png) | ![Black theme](screenshots/black.png) |
 
 - Beginner, intermediate and expert, switchable mid-game
 - The first click is always safe, and so is everything around it
