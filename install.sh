@@ -7,19 +7,20 @@
 # What it does:
 #   1. Registers the plugin (omarchy plugin add, never a file copy, or
 #      `omarchy plugin update` could never fast-forward it later).
-#   2. Enables it and places the bar icon on the right.
+#   2. Enables it, which for a panel-only plugin means one entry in
+#      shell.json's plugins[] and nothing in the bar.
+#   3. Drops a launcher entry, since a shell plugin is not an app and
+#      nothing else would put it in the launcher.
 #
 # There is nothing else to install: the board is drawn in QML and the game
 # needs nothing beyond what Omarchy already has, so `omarchy plugin add` on
 # its own works fine too.
 #
 # Overrides:
-#   OMASWEEPER_REPO=user/repo                 register from a different repo
-#   OMASWEEPER_SECTION=left|center|right      where the bar icon lands
+#   OMASWEEPER_REPO=user/repo    register from a different repo
 set -euo pipefail
 
 REPO="${OMASWEEPER_REPO:-jankeesvw/omasweeper}"
-SECTION="${OMASWEEPER_SECTION:-right}"
 PLUGIN_ID="jankeesvw.omasweeper"
 
 say() { printf '%s\n' "$*"; }
@@ -36,7 +37,7 @@ if omarchy plugin list 2>/dev/null | grep -q "^${PLUGIN_ID}[[:space:]]"; then
 else
   say "==> Registering ${PLUGIN_ID} from ${REPO}"
   # --yes only when there is no terminal to prompt on: with a TTY the user
-  # gets the placement prompt a bare `plugin add` would give them.
+  # gets the prompt a bare `plugin add` would give them.
   if [ -t 0 ] && [ -t 1 ]; then
     omarchy plugin add "https://github.com/${REPO}"
   else
@@ -44,14 +45,11 @@ else
   fi
 fi
 
-say "==> Enabling and placing the bar icon (${SECTION})"
-omarchy plugin enable "$PLUGIN_ID" --section "$SECTION" || true
-# A fresh unattended add can race the registry's rescan and land the widget in
-# center regardless of defaultSection, so place it explicitly afterwards.
-omarchy bar move "$PLUGIN_ID" --section "$SECTION" >/dev/null 2>&1 || true
+say "==> Enabling"
+omarchy plugin enable "$PLUGIN_ID" || true
 
 # A shell plugin is not an app, so nothing puts it in the launcher. This does:
-# a desktop entry whose Exec is the same toggle the bar icon runs.
+# a desktop entry whose Exec is the toggle a keybinding would run.
 PLUGIN_DIR="$HOME/.config/omarchy/plugins/${PLUGIN_ID}"
 APPS_DIR="$HOME/.local/share/applications"
 say "==> Adding the launcher entry"
@@ -71,6 +69,8 @@ command -v update-desktop-database >/dev/null 2>&1 &&
   update-desktop-database "$APPS_DIR" >/dev/null 2>&1 || true
 
 say ""
-say "Done. Search for Omasweeper in the launcher, click the ⚑ in the bar, or"
-say "bind a key to:"
+say "Done. Search for Omasweeper in the launcher, or bind a key to:"
 say "  omarchy-shell shell toggle ${PLUGIN_ID}"
+say ""
+say "Closing the board unloads it again, so nothing of it runs while you are"
+say "not playing. Press ? in the game for the keys."

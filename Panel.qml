@@ -1,10 +1,8 @@
 import Quickshell
 import Quickshell.Io
-import Quickshell.Wayland
 import QtQuick
 import QtQuick.Shapes
 import qs.Commons
-import qs.Ui
 
 // Omasweeper, Minesweeper for omarchy-shell. Summoned/toggled through the shell host:
 //   omarchy-shell shell toggle jankeesvw.omasweeper
@@ -22,10 +20,10 @@ import qs.Ui
 // showing the previous move. That copy is also what makes undo-free
 // restore-from-disk trivial, since a cell is never anything but its index.
 //
-// `keepLoaded: true` in manifest.json matters here: without it the host's
-// Loader destroys this instance on hide and the game in progress goes with
-// it. State is written to disk after each move as well, so a half-finished
-// board survives omarchy-restart-shell too.
+// Nothing is kept loaded: closing the board lets the host's Loader destroy
+// this instance, so a closed game costs the shell nothing. The board in
+// progress lives on disk instead, written after every move and flushed on
+// close, and the next open reads it back.
 Item {
   id: root
 
@@ -435,23 +433,29 @@ Item {
     id: saveTimer
     interval: 400
     repeat: false
-    onTriggered: {
-      var live = root.started && !root.finished
-      var payload = JSON.stringify({
-        version: 1,
-        level: root.levelSpec.key,
-        sound: root.sound,
-        stats: root.stats,
-        game: live ? {
-          armed: root.armed,
-          seconds: root.seconds,
-          mines: root.indicesWhere(root.mine),
-          shown: root.indicesWhere(root.shown),
-          flags: root.indicesWhere(root.flag)
-        } : null
-      }, null, 2) + "\n"
-      stateFile.setText(payload)
-    }
+    onTriggered: root.writeState()
+  }
+
+  // The write itself. Closing the board calls this directly: the instance is
+  // about to be destroyed, and a pending debounce would be destroyed with it.
+  function writeState() {
+    if (!root.stateLoaded) return
+    saveTimer.stop()
+    var live = root.started && !root.finished
+    var payload = JSON.stringify({
+      version: 1,
+      level: root.levelSpec.key,
+      sound: root.sound,
+      stats: root.stats,
+      game: live ? {
+        armed: root.armed,
+        seconds: root.seconds,
+        mines: root.indicesWhere(root.mine),
+        shown: root.indicesWhere(root.shown),
+        flags: root.indicesWhere(root.flag)
+      } : null
+    }, null, 2) + "\n"
+    stateFile.setText(payload)
   }
 
   // Piles of booleans compress to the indices that are true, which is both
@@ -573,9 +577,11 @@ Item {
     root.opened = false
     root.hoverIndex = -1
     root.pressIndex = -1
+    root.helpOpen = false
     // A finished board is history the moment you look away: the next open
     // deals rather than greeting you with the result you already read.
     if (root.finished) root.newGame()
+    root.writeState()
     if (root.shell && typeof root.shell.hide === "function")
       root.shell.hide(root.selfId)
   }
@@ -626,6 +632,61 @@ Item {
     return (v < 10 ? "00" : v < 100 ? "0" : "") + v
   }
 
+  // ---------------------------------------------------------------- keymap
+  //
+  // The single list of bindings: the `?` sheet renders it, and so does the
+  // hint line in the status bar. A binding that ships therefore cannot go
+  // missing from the help, which is the usual way help rots.
+  //
+  // The motions are vim's. hjkl was already here; the rest is what a hand
+  // that types hjkl reaches for next. H and L land where gg and G do, because
+  // the whole board is always on screen and there is nothing to scroll. They
+  // are bound anyway, since a finger that expects them expects them.
+
+  property bool helpOpen: false
+
+  readonly property string widestKey: {
+    var w = ""
+    for (var i = 0; i < root.keymap.length; i++)
+      for (var j = 0; j < root.keymap[i].keys.length; j++)
+        if (root.keymap[i].keys[j].key.length > w.length) w = root.keymap[i].keys[j].key
+    return w
+  }
+
+  readonly property var keymap: [
+    {
+      group: "motion",
+      keys: [
+        { key: "h j k l", what: "left, down, up, right" },
+        { key: "arrows",  what: "the same, for the other hand" },
+        { key: "0 ^",     what: "first cell of the row" },
+        { key: "$",       what: "last cell of the row" },
+        { key: "gg",      what: "top of the column" },
+        { key: "G",       what: "bottom of the column" },
+        { key: "H M L",   what: "top, middle, bottom row" },
+        { key: "C-d C-u", what: "half a board down, up" }
+      ]
+    },
+    {
+      group: "play",
+      keys: [
+        { key: "space",   what: "open the cell" },
+        { key: "enter",   what: "open, or deal again when finished" },
+        { key: "f",       what: "flag or unflag" },
+        { key: "n",       what: "new game" }
+      ]
+    },
+    {
+      group: "game",
+      keys: [
+        { key: "1 2 3",   what: "beginner, intermediate, expert" },
+        { key: "m",       what: "mute" },
+        { key: "?",       what: "these keys" },
+        { key: "q esc",   what: "close" }
+      ]
+    }
+  ]
+
   // ------------------------------------------------------------- pointer state
 
   property int hoverIndex: -1
@@ -637,15 +698,40 @@ Item {
   readonly property int activeCol: root.activeIndex >= 0 ? root.activeIndex % root.cols : -1
   readonly property int activeRow: root.activeIndex >= 0 ? Math.floor(root.activeIndex / root.cols) : -1
 
-  function moveCursor(dc, dr) {
-    if (root.cursor < 0) {
-      root.cursor = Math.floor(root.rows / 2) * root.cols + Math.floor(root.cols / 2)
-    } else {
-      var c = Math.max(0, Math.min(root.cols - 1, (root.cursor % root.cols) + dc))
-      var r = Math.max(0, Math.min(root.rows - 1, Math.floor(root.cursor / root.cols) + dr))
-      root.cursor = c + r * root.cols
-    }
+  // Every motion goes through here, so the first key pressed on a board with
+  // no cursor yet only places one, in the middle. There is nothing to move
+  // relative to before that, and landing in a corner because you reached for
+  // `k` is not a start.
+  function seedCursor() {
+    if (root.cursor >= 0) return true
+    root.cursor = Math.floor(root.rows / 2) * root.cols + Math.floor(root.cols / 2)
     root.cursorShown = true
+    return false
+  }
+
+  // Clamped rather than wrapped: a board has edges, and vim's motions stop at
+  // them too.
+  function placeCursor(c, r) {
+    root.cursor = Math.max(0, Math.min(root.cols - 1, c))
+                + Math.max(0, Math.min(root.rows - 1, r)) * root.cols
+    root.cursorShown = true
+  }
+
+  function moveCursor(dc, dr) {
+    if (!root.seedCursor()) return
+    root.placeCursor((root.cursor % root.cols) + dc,
+                     Math.floor(root.cursor / root.cols) + dr)
+  }
+
+  // Column-preserving and row-preserving jumps, the two halves of 0/$/gg/G.
+  function jumpToCol(c) {
+    if (!root.seedCursor()) return
+    root.placeCursor(c, Math.floor(root.cursor / root.cols))
+  }
+
+  function jumpToRow(r) {
+    if (!root.seedCursor()) return
+    root.placeCursor(root.cursor % root.cols, r)
   }
 
   // -------------------------------------------------------------------- parts
@@ -746,6 +832,114 @@ Item {
     }
   }
 
+  // ------------------------------------------------------------------- keys
+  //
+  // One handler, called both by the window's Keys.onPressed and by the test
+  // IPC, so a scripted keyboard and a real one cannot drift apart. Returns
+  // whether the key was ours.
+  //
+  // `g` is the only prefix here, and it only ever leads to `gg`. It is
+  // cleared by every other key rather than by a timeout, the way vim clears a
+  // pending operator: g then j is a j, not a lost keystroke.
+
+  property bool pendingG: false
+
+  function handleKey(key, shift, ctrl) {
+    var afterG = root.pendingG
+    root.pendingG = false
+
+    // The help sheet is a page you dismiss, not a layer you play through:
+    // while it is up, every key closes it or does nothing at all.
+    if (root.helpOpen) {
+      if (key === Qt.Key_Question || key === Qt.Key_Escape || key === Qt.Key_Q
+          || key === Qt.Key_Space || key === Qt.Key_Return || key === Qt.Key_Enter)
+        root.helpOpen = false
+      return true
+    }
+
+    if (key === Qt.Key_Question) {
+      root.helpOpen = true
+    } else if (key === Qt.Key_Escape || (key === Qt.Key_Q && !ctrl)) {
+      root.close()
+    } else if (key === Qt.Key_N && !ctrl) {
+      root.newGame()
+    } else if (key === Qt.Key_1) {
+      root.setLevel(0)
+    } else if (key === Qt.Key_2) {
+      root.setLevel(1)
+    } else if (key === Qt.Key_3) {
+      root.setLevel(2)
+
+    // ---- motion
+    } else if (key === Qt.Key_Left || (key === Qt.Key_H && !shift)) {
+      root.moveCursor(-1, 0)
+    } else if (key === Qt.Key_Right || (key === Qt.Key_L && !shift)) {
+      root.moveCursor(1, 0)
+    } else if (key === Qt.Key_Up || (key === Qt.Key_K && !shift)) {
+      root.moveCursor(0, -1)
+    } else if (key === Qt.Key_Down || (key === Qt.Key_J && !shift)) {
+      root.moveCursor(0, 1)
+    } else if (key === Qt.Key_0 || key === Qt.Key_AsciiCircum) {
+      root.jumpToCol(0)
+    } else if (key === Qt.Key_Dollar) {
+      root.jumpToCol(root.cols - 1)
+    } else if (key === Qt.Key_G) {
+      if (shift) root.jumpToRow(root.rows - 1)          // G
+      else if (afterG) root.jumpToRow(0)                // gg
+      else root.pendingG = true
+    } else if (key === Qt.Key_H && shift) {
+      root.jumpToRow(0)
+    } else if (key === Qt.Key_M && shift) {
+      root.jumpToRow(Math.floor((root.rows - 1) / 2))
+    } else if (key === Qt.Key_L && shift) {
+      root.jumpToRow(root.rows - 1)
+    } else if (key === Qt.Key_D && ctrl) {
+      root.moveCursor(0, Math.floor(root.rows / 2))
+    } else if (key === Qt.Key_U && ctrl) {
+      root.moveCursor(0, -Math.floor(root.rows / 2))
+
+    // ---- play
+    } else if (key === Qt.Key_Space || key === Qt.Key_Return || key === Qt.Key_Enter) {
+      if (root.finished) root.newGame()
+      else if (root.cursor >= 0) root.primaryAt(root.cursor)
+      else root.seedCursor()
+    } else if (key === Qt.Key_F && !ctrl) {
+      if (root.cursor >= 0) root.toggleFlag(root.cursor)
+      else root.seedCursor()
+    } else if (key === Qt.Key_M) {
+      root.sound = !root.sound
+      root.save()
+      if (root.sound) root.blip("flag")
+    } else {
+      return false
+    }
+    return true
+  }
+
+  // A key by the name you would call it: "h", "G", "gg" is two of these, "$",
+  // "C-d", "space", "?". Anything else is a miss the caller hears about.
+  function keyByName(name) {
+    var ctrl = false
+    var n = String(name)
+    if (n.length > 2 && n.slice(0, 2).toUpperCase() === "C-") {
+      ctrl = true
+      n = n.slice(2)
+    }
+    var named = {
+      "space": Qt.Key_Space, "enter": Qt.Key_Return, "return": Qt.Key_Return,
+      "esc": Qt.Key_Escape, "escape": Qt.Key_Escape,
+      "left": Qt.Key_Left, "right": Qt.Key_Right, "up": Qt.Key_Up, "down": Qt.Key_Down,
+      "?": Qt.Key_Question, "$": Qt.Key_Dollar, "^": Qt.Key_AsciiCircum
+    }
+    var lower = n.toLowerCase()
+    if (named[lower] !== undefined) return { key: named[lower], shift: false, ctrl: ctrl }
+    if (n.length !== 1) return null
+    if (n >= "0" && n <= "9") return { key: Qt.Key_0 + (n.charCodeAt(0) - 48), shift: false, ctrl: ctrl }
+    if (lower >= "a" && lower <= "z")
+      return { key: Qt.Key_A + (lower.charCodeAt(0) - 97), shift: n !== lower, ctrl: ctrl }
+    return null
+  }
+
   // -------------------------------------------------------------------- test
 
   // Lets the game be played without a hand on the mouse, which is the only way
@@ -802,6 +996,33 @@ Item {
 
     function state(): string { return root.summary() }
 
+    // Types keys the way fingers do, one name per press: "h", "G", "$",
+    // "C-d", "space", "?". `gg` is "g g", which is also how you type it.
+    function key(names: string): string {
+      var list = String(names).trim().split(/\s+/)
+      for (var i = 0; i < list.length; i++) {
+        if (list[i] === "") continue
+        var k = root.keyByName(list[i])
+        if (!k) return "no key named " + list[i]
+        root.handleKey(k.key, k.shift, k.ctrl)
+      }
+      return root.cursorSummary()
+    }
+
+    // Where the keyboard cursor is, and whether the help sheet is up.
+    function cursor(): string { return root.cursorSummary() }
+
+    // The window as a PNG. Renders the scene graph rather than reading the
+    // screen, so a board on a workspace you are not looking at still comes
+    // out, which is the only way to check the drawing without taking over
+    // the desktop to do it.
+    function snap(path: string): string {
+      if (!root.opened) return "not open"
+      var target = String(path)
+      var ok = keyCatcher.grabToImage(function(result) { result.saveToFile(target) })
+      return ok ? "ok " + target : "grab failed"
+    }
+
     // Spoils the board on purpose: the mine map as "col,row" pairs, so a test
     // can flag correctly and play a game out to a win. Nothing in the UI can
     // reach this.
@@ -812,6 +1033,17 @@ Item {
       }
       return out.join(" ")
     }
+  }
+
+  function cursorSummary() {
+    return JSON.stringify({
+      cursor: root.cursor,
+      col: root.cursor >= 0 ? root.cursor % root.cols : -1,
+      row: root.cursor >= 0 ? Math.floor(root.cursor / root.cols) : -1,
+      shown: root.cursorShown,
+      pendingG: root.pendingG,
+      help: root.helpOpen
+    })
   }
 
   function summary() {
@@ -874,38 +1106,10 @@ Item {
       focus: true
 
       Keys.onPressed: function(event) {
-        if (event.key === Qt.Key_Escape || event.key === Qt.Key_Q) {
-          root.close()
-        } else if (event.key === Qt.Key_N) {
-          root.newGame()
-        } else if (event.key === Qt.Key_1) {
-          root.setLevel(0)
-        } else if (event.key === Qt.Key_2) {
-          root.setLevel(1)
-        } else if (event.key === Qt.Key_3) {
-          root.setLevel(2)
-        } else if (event.key === Qt.Key_Left || event.key === Qt.Key_H) {
-          root.moveCursor(-1, 0)
-        } else if (event.key === Qt.Key_Right || event.key === Qt.Key_L) {
-          root.moveCursor(1, 0)
-        } else if (event.key === Qt.Key_Up || event.key === Qt.Key_K) {
-          root.moveCursor(0, -1)
-        } else if (event.key === Qt.Key_Down || event.key === Qt.Key_J) {
-          root.moveCursor(0, 1)
-        } else if (event.key === Qt.Key_Space || event.key === Qt.Key_Return
-                   || event.key === Qt.Key_Enter) {
-          if (root.finished) root.newGame()
-          else if (root.cursor >= 0) root.primaryAt(root.cursor)
-        } else if (event.key === Qt.Key_F) {
-          if (root.cursor >= 0) root.toggleFlag(root.cursor)
-        } else if (event.key === Qt.Key_M) {
-          root.sound = !root.sound
-          root.save()
-          if (root.sound) root.blip("flag")
-        } else {
-          return
-        }
-        event.accepted = true
+        if (root.handleKey(event.key,
+                           (event.modifiers & Qt.ShiftModifier) !== 0,
+                           (event.modifiers & Qt.ControlModifier) !== 0))
+          event.accepted = true
       }
 
       // ------------------------------------------------------------- header
@@ -981,6 +1185,11 @@ Item {
               if (root.sound) root.blip("flag")
             }
           }
+          TermTab {
+            label: "?"
+            active: root.helpOpen
+            onActivated: root.helpOpen = !root.helpOpen
+          }
         }
       }
 
@@ -1038,7 +1247,7 @@ Item {
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
           visible: statusLine.hintRoom >= implicitWidth
-          text: "hjkl move · space open · f flag · m mute · n new · q quit"
+          text: "hjkl move · space open · f flag · n new · ? keys · q quit"
           color: root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
@@ -1047,7 +1256,7 @@ Item {
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
           visible: !keyHints.visible && statusLine.hintRoom >= implicitWidth
-          text: "space open · f flag · q quit"
+          text: "space open · f flag · ? keys"
           color: root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
@@ -1062,6 +1271,117 @@ Item {
         anchors.bottomMargin: Style.spacing.md
         height: 1
         color: root.gridLine
+      }
+
+      // --------------------------------------------------------------- help
+      //
+      // Over the board rather than beside it: the sheet is what you are
+      // looking at while it is up, and the game is not going anywhere. Drawn
+      // in the same hairlines and the same two type sizes as everything else,
+      // so it reads as another pane of this window and not as a dialog that
+      // wandered in.
+
+      TextMetrics {
+        id: keyColumn
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.body
+        text: root.widestKey
+      }
+
+      Rectangle {
+        id: helpSheet
+        z: 30
+        visible: root.helpOpen
+        anchors.centerIn: parent
+        width: Math.min(parent.width, helpBody.implicitWidth + Style.spacing.xl * 2)
+        height: Math.min(parent.height, helpBody.implicitHeight + Style.spacing.lg * 2)
+        color: Qt.rgba(root.background.r, root.background.g, root.background.b, 0.97)
+        border.width: 1
+        border.color: root.accent
+
+        // Nothing behind the sheet is clickable while it is up, and clicking
+        // it puts it away, the same gesture as clicking the verdict card.
+        MouseArea {
+          anchors.fill: parent
+          hoverEnabled: true
+          onClicked: root.helpOpen = false
+        }
+
+        Column {
+          id: helpBody
+          anchors.centerIn: parent
+          spacing: Style.spacing.md
+
+          Item {
+            width: helpTitle.implicitWidth + Style.spacing.xxl + helpDismiss.implicitWidth
+            height: helpTitle.implicitHeight
+
+            Text {
+              id: helpTitle
+              anchors.left: parent.left
+              text: "keys"
+              color: root.accent
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.subtitle
+              font.bold: true
+            }
+            Text {
+              id: helpDismiss
+              anchors.right: parent.right
+              anchors.baseline: helpTitle.baseline
+              text: "? or esc to close"
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+            }
+          }
+
+          Rectangle {
+            width: parent.width
+            height: 1
+            color: root.gridLine
+          }
+
+          Repeater {
+            model: root.keymap
+            delegate: Column {
+              required property var modelData
+              spacing: Style.spacing.xxs
+              topPadding: Style.spacing.xs
+
+              Text {
+                text: modelData.group
+                color: root.dim
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+              }
+
+              Repeater {
+                model: modelData.keys
+                delegate: Row {
+                  required property var modelData
+                  spacing: Style.spacing.md
+
+                  Text {
+                    width: keyColumn.width
+                    horizontalAlignment: Text.AlignRight
+                    text: modelData.key
+                    color: root.foreground
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.body
+                  }
+                  Text {
+                    text: modelData.what
+                    color: root.foreground
+                    opacity: 0.7
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.body
+                  }
+                }
+              }
+            }
+          }
+        }
       }
 
       // -------------------------------------------------------------- board
@@ -1224,7 +1544,11 @@ Item {
             // what makes chording on middle-click a two-line affair.
             MouseArea {
               anchors.fill: parent
-              hoverEnabled: true
+              // Dead while the help sheet is up, hover included: a move made
+              // by a pointer that is only on its way to the sheet is a move
+              // you did not mean.
+              enabled: !root.helpOpen
+              hoverEnabled: !root.helpOpen
               acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
               cursorShape: root.finished ? Qt.ArrowCursor : Qt.PointingHandCursor
               z: 10

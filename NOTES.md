@@ -4,15 +4,28 @@ Working notes for this repo. Read before changing `Panel.qml`.
 
 ## Status
 
-**1.0.0, untagged.** Playable. Installed here as a dev symlink
-(`~/.config/omarchy/plugins/jankeesvw.omasweeper` → this repo), enabled in the
-right bar section — so **no hot reload**: `omarchy restart shell` after every
-QML edit.
+**1.1.0, untagged.** Playable. Installed here as a dev symlink
+(`~/.config/omarchy/plugins/jankeesvw.omasweeper` → this repo), so **no hot
+reload**: `omarchy restart shell` after every QML edit.
 
 Verified in the live shell: dealing, the safe first click, flood fill,
 flagging, clearing around a number, losing on a mine, winning a full board
 (including the best-time record), and a game in progress surviving a shell
 restart. Shell log clean.
+
+1.1.0 dropped the bar widget and `keepLoaded`, and added vim motions plus the
+`?` sheet. The motions and the sheet were verified through the test channel
+(`key`, `cursor`, `snap`) against a second Quickshell instance running this
+same `Panel.qml`, so the live shell never had to be restarted to check them:
+
+```
+qs -p <scratch-config>          # shell.qml = ShellRoot { Panel { open() } }
+qs -p <scratch-config> ipc call jankeesvw.omasweeper.test key "g g 0 space"
+```
+
+The scratch config is three files: a `shell.qml` that opens the panel, a
+`Panel.qml` symlink into this repo, and a `Commons` symlink to
+`/usr/share/omarchy/shell/Commons` so `import qs.Commons` resolves.
 
 ## Design
 
@@ -34,6 +47,23 @@ is spared.
 **One MouseArea for the whole grid**, not one per cell. An expert board is 480
 cells and the cell under the pointer is a division away. It also puts all
 three buttons in one place.
+
+**Motions are vim's, and they clamp.** `hjkl` was there from the start; `0`,
+`$`, `gg`, `G`, `H`/`M`/`L` and `ctrl-d`/`ctrl-u` came later. They all go
+through `seedCursor()`, which returns false the first time and only places the
+cursor in the middle. Reaching for `k` on a board with no cursor should not
+throw you into a corner. `M` is the middle row and `m` is mute, told apart by
+the shift modifier rather than by giving mute a different letter.
+
+**The key list and the key handler are one list.** `keymap` is the model the
+`?` sheet renders, and the bindings in `handleKey` are meant to match it. That
+does not make them impossible to drift apart, but it does mean the sheet is
+never a second place to remember to edit.
+
+**The key handler lives on `root`, not in `Keys.onPressed`.** The window's
+handler is three lines that call `root.handleKey(key, shift, ctrl)`, and so
+does the test channel's `key`. A scripted keyboard therefore presses the same
+keys the fingers do.
 
 **The window is a `FloatingWindow`**, i.e. a normal XDG toplevel, not a
 `PanelWindow`. That is the whole difference between this and the usual shell
@@ -69,18 +99,27 @@ loop.
   test run.
 - **A chord is one sound.** `chordAt` sets `quietMoves` around its reveals,
   or a single chord plays four open-blips on top of each other.
+- **`grabToImage` beats a screenshot tool.** It re-renders the scene into an
+  FBO rather than reading the screen, so `test snap` gets the board even when
+  the window sits on a workspace nobody is looking at. That is what makes it
+  possible to check the drawing without taking over the desktop to do it.
+- **`hyprctl keyword` is gone if your config is Lua.** It answers "keyword
+  can't work with non-legacy parsers", so a temporary window rule to park a
+  test window somewhere harmless is not available. Move the window instead:
+  `hyprctl dispatch 'hl.dsp.window.move({ window = "address:0x…",
+  workspace = "99", silent = true })'`.
 
 ## Plugin plumbing
 
-- `panel` + `bar-widget`. `omarchy plugin enable` writes only the bar layout
-  entry for a plugin with both kinds, so removing the bar icon also unhooks a
-  keybinding to the panel. Quattrolitaire works around that by appending its
-  own `plugins[]` entry on first open; this one does not, because it does not
-  edit the user's `shell.json` for a case that only comes up if you remove the
-  icon on purpose. Add `{"id": "jankeesvw.omasweeper"}` to `plugins[]` by hand
-  if you want the keybinding without the icon.
-- `keepLoaded: true` is load-bearing. Without it the host's Loader destroys
-  the instance on hide and the game in progress goes with it.
+- `panel` only. A plugin that declares a `bar-widget` gets its enable written
+  as a bar layout entry and nothing else, which means removing the icon also
+  unhooks the keybinding to the panel. Without the bar widget, `omarchy plugin
+  enable` writes the ordinary `plugins[]` entry and the bar is left alone.
+- **Nothing is kept loaded.** `keepLoaded: true` is gone: the host's Loader
+  destroys the instance on hide, so a closed board costs the shell nothing.
+  What used to make `keepLoaded` load-bearing, losing the game in progress,
+  is handled by `writeState()`, which `close()` calls directly rather than
+  leaving the 400ms debounce to a timer that is about to be destroyed.
 
 ## Ideas, not committed to
 

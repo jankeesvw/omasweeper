@@ -20,12 +20,13 @@ drawing it from the palette rather than pinning colours:
 - The first click is always safe, and so is everything around it
 - Left-click opens, right-click flags, and clicking a satisfied number clears
   around it
-- **Fully keyboard accessible** — every move the mouse can make, the keyboard
-  can make too
+- **Fully keyboard accessible**, with vim's motions: every move the mouse can
+  make, the keyboard can make too, and `?` lists the keys
 - 8-bit sound on every move, mutable with `m`
 - Best time and win record per difficulty
 - The game in progress is saved, so it survives closing the window *and*
   restarting the shell
+- Closing the board unloads it: nothing of it runs while you are not playing
 
 ## Install
 
@@ -33,14 +34,13 @@ drawing it from the palette rather than pinning colours:
 omarchy plugin add https://github.com/jankeesvw/omasweeper --enable
 ```
 
-Or with the installer, which does the same thing and places the bar icon:
+Or with the installer, which does the same thing and adds a launcher entry:
 
 ```bash
 ./install.sh
 ```
 
-Then search for **Omasweeper** in the launcher, click the ⚑ in the bar, or
-bind a key to:
+Then search for **Omasweeper** in the launcher, or bind a key to:
 
 ```bash
 omarchy-shell shell toggle jankeesvw.omasweeper
@@ -50,30 +50,52 @@ A shell plugin is not an application, so nothing gives it a launcher entry on
 its own: `omarchy plugin add` registers code inside the shell process, and the
 launcher only indexes `.desktop` files. `install.sh` writes one to
 `~/.local/share/applications/omasweeper.desktop` whose `Exec` is the same
-toggle the bar icon runs. Adding the plugin without the installer leaves it
+toggle a keybinding runs. Adding the plugin without the installer leaves it
 out of the launcher, which is a one-file fix if you want it back.
 
-`install.sh` takes two optional overrides: `OMASWEEPER_SECTION` picks the bar
-section (`left`, `center` or `right`, default `right`), and `OMASWEEPER_REPO`
-registers the plugin from a fork instead.
+`install.sh` takes one optional override: `OMASWEEPER_REPO` registers the
+plugin from a fork instead.
+
+There is no bar icon. Omasweeper is a panel-only plugin, so enabling it adds
+one entry to `plugins[]` in `shell.json` and touches the bar layout not at
+all; closing the board lets the shell unload it again.
 
 ## Keyboard
 
-The whole game is playable without touching the mouse. There is a cursor on
-the board the moment you press a direction key, and it stays out of the way
-until you do.
+The whole game is playable without touching the mouse, and the motions are
+vim's. There is a cursor on the board the moment you press a direction key,
+and it stays out of the way until you do. The first key you press only puts
+the cursor in the middle of the board, since there is nothing to move relative
+to before that.
+
+Press `?` for the same list in the game.
 
 | Key | What it does |
 | --- | --- |
 | `h` `j` `k` `l`, or the arrow keys | Move the cursor |
+| `0` `^` | First cell of the row |
+| `$` | Last cell of the row |
+| `gg` / `G` | Top / bottom of the column |
+| `H` `M` `L` | Top, middle, bottom row |
+| `ctrl-d` / `ctrl-u` | Half a board down / up |
 | `space` / `enter` | Open the cell, or clear around it if it is a satisfied number |
 | `f` | Flag or unflag the cell |
 | `n` | New board |
 | `1` `2` `3` | Beginner, intermediate, expert |
 | `m` | Mute or unmute |
+| `?` | The key list |
 | `q` / `esc` | Close the window |
 
-After a game ends, `space` or `enter` deals the next one.
+The whole board is always on screen, so `H` and `L` land where `gg` and `G`
+do. They are bound anyway: a hand that types `hjkl` reaches for them without
+asking whether there is anything to scroll.
+
+Motions clamp at the edges rather than wrapping, and `M` is the middle row
+while `m` is mute, the same case distinction vim makes everywhere else.
+
+After a game ends, `space` or `enter` deals the next one. While the key list
+is up it is the only thing listening: `?`, `esc`, `q`, `space` or `enter` put
+it away and nothing else does anything.
 
 ## Mouse
 
@@ -133,8 +155,8 @@ windowrule = size 780 640, title:^(omasweeper)$
 omarchy plugin remove jankeesvw.omasweeper
 ```
 
-That unregisters the plugin and drops its bar icon. The saved game is left
-behind; delete it too with:
+That unregisters the plugin and drops its entry from `shell.json`. The saved
+game is left behind; delete it too with:
 
 ```bash
 rm -rf ~/.local/state/omasweeper
@@ -160,23 +182,32 @@ a hand on the mouse:
 omarchy-shell jankeesvw.omasweeper.test deal
 omarchy-shell jankeesvw.omasweeper.test play 4 4
 omarchy-shell jankeesvw.omasweeper.test flag 2 4
+omarchy-shell jankeesvw.omasweeper.test key "g g 0 space"
 omarchy-shell jankeesvw.omasweeper.test board
 omarchy-shell jankeesvw.omasweeper.test state
+omarchy-shell jankeesvw.omasweeper.test cursor
+omarchy-shell jankeesvw.omasweeper.test snap /tmp/board.png
 ```
 
 `board` prints the board as text (`#` covered, `F` flag, `*` mine, `.` opened
-and empty), and `state` prints the counters as JSON. Every entry point goes
-through the same functions the pointer calls, so a scripted game and a played
-one cannot drift apart. There is also `mines`, which spoils the board on
-purpose so a test can play a game out to a win.
+and empty), `state` prints the counters as JSON, and `cursor` prints where the
+keyboard cursor is and whether the key list is up. `key` types keys by name,
+one press per word: `h`, `G`, `$`, `C-d`, `space`, `?`, and `gg` as `g g`,
+which is how you type it anyway. `snap` writes the window to a PNG by
+re-rendering the scene rather than reading the screen, so the board comes out
+even when it is on a workspace you are not looking at.
+
+Every entry point goes through the same functions the pointer and the keyboard
+call, so a scripted game and a played one cannot drift apart. There is also
+`mines`, which spoils the board on purpose so a test can play a game out to a
+win.
 
 ## Where things live
 
 | Path | What |
 | --- | --- |
-| `manifest.json` | Plugin manifest — `panel` + `bar-widget`, `keepLoaded` |
-| `Panel.qml` | The whole game: model, board, window, sound |
-| `BarWidget.qml` | Bar icon; toggles the window over shell IPC |
+| `manifest.json` | Plugin manifest: `panel`, nothing kept loaded |
+| `Panel.qml` | The whole game: model, board, window, keys, sound |
 | `sounds/` | The seven square waves |
 | `tools/make-sounds.py` | Regenerates them |
 | `bin/omasweeper-play` | Picks a player and plays one file |
