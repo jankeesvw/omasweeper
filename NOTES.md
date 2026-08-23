@@ -4,7 +4,7 @@ Working notes for this repo. Read before changing `Panel.qml`.
 
 ## Status
 
-**1.1.0, untagged.** Playable. Installed here as a dev symlink
+**1.1.1, untagged.** Playable. Installed here as a dev symlink
 (`~/.config/omarchy/plugins/jankeesvw.omasweeper` → this repo), so **no hot
 reload**: `omarchy restart shell` after every QML edit.
 
@@ -26,6 +26,15 @@ qs -p <scratch-config> ipc call jankeesvw.omasweeper.test key "g g 0 space"
 The scratch config is three files: a `shell.qml` that opens the panel, a
 `Panel.qml` symlink into this repo, and a `Commons` symlink to
 `/usr/share/omarchy/shell/Commons` so `import qs.Commons` resolves.
+
+Run that instance with `HOME` pointed at a throwaway directory. The state path
+comes from `Quickshell.env("HOME")`, so without it a scratch run writes over
+the real `~/.local/state/omasweeper/state.json`, records and all.
+
+1.1.1 closed the input race and the 1.0 bar entry it left in `shell.json`. The
+same scratch instance verified the race both ways: the harness holds the Panel
+object, so it can press keys in the turn before the `FileView` load lands and
+read `stateLoaded`, `started`, `level` and the MouseAreas back out.
 
 ## Design
 
@@ -115,6 +124,17 @@ loop.
   as a bar layout entry and nothing else, which means removing the icon also
   unhooks the keybinding to the panel. Without the bar widget, `omarchy plugin
   enable` writes the ordinary `plugins[]` entry and the bar is left alone.
+- **Updating from 1.0 leaves a bar entry behind.** 1.0 declared a bar widget,
+  so its enable was written into `bar.layout`. Nothing in this version can
+  answer to that entry, and while it sits there `findEntryLocation()` finds it
+  before it looks at `plugins[]`, so `setEnabled(id, true)` sees the plugin as
+  already placed and writes nothing at all. `install.sh` clears it with a
+  disable before the enable, which drops whichever entry is there and then
+  writes the panel one. It has to wait for the rescan first: `plugin add` and
+  `plugin update` fire `rescanPlugins` without waiting for it, and an enable
+  run while the registry still holds 1.0's manifest splices a *fresh* bar entry
+  into `center` instead. Both were checked by driving the real
+  `PluginRegistry.qml` in a scratch instance with a fake config provider.
 - **Nothing is kept loaded.** `keepLoaded: true` is gone: the host's Loader
   destroys the instance on hide, so a closed board costs the shell nothing.
   What used to make `keepLoaded` load-bearing, losing the game in progress,

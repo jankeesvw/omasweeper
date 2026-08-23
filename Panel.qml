@@ -766,6 +766,10 @@ Item {
     MouseArea {
       id: tabMouse
       anchors.fill: parent
+      // Dead until the saved game is back, for the same reason handleKey and
+      // the grid are: every tab here picks a level, deals, or writes a
+      // setting, and the restore is about to overwrite all three.
+      enabled: root.stateLoaded
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
       onClicked: tab.activated()
@@ -845,6 +849,13 @@ Item {
   property bool pendingG: false
 
   function handleKey(key, shift, ctrl) {
+    // Nothing is playable until the saved game is back. The restore replaces
+    // every cell, so a move made before it lands is a move undone, and save()
+    // refuses to write one anyway. Closing stays live: a state file that is
+    // slow to arrive must not lock you inside the window.
+    if (!root.stateLoaded && key !== Qt.Key_Escape && !(key === Qt.Key_Q && !ctrl))
+      return true
+
     var afterG = root.pendingG
     root.pendingG = false
 
@@ -943,7 +954,10 @@ Item {
   // -------------------------------------------------------------------- test
 
   // Lets the game be played without a hand on the mouse, which is the only way
-  // to exercise it in a headless run:
+  // to exercise it in a headless run. The channel is this instance, so it only
+  // answers while the board is open -- a closed board is unloaded, and the
+  // handler goes with it:
+  //   omarchy-shell shell summon jankeesvw.omasweeper
   //   omarchy-shell jankeesvw.omasweeper.test deal
   //   omarchy-shell jankeesvw.omasweeper.test play 4 4
   //   omarchy-shell jankeesvw.omasweeper.test board
@@ -1048,6 +1062,11 @@ Item {
 
   function summary() {
     return JSON.stringify({
+      // The channel is deliberately not behind the input gate the keyboard and
+      // the pointer are: a harness that cannot touch a loading board cannot
+      // test one. It does have to be able to see the gate, though, or a
+      // scripted deal lands before the restore and is quietly undone.
+      loaded: root.stateLoaded,
       level: root.levelSpec.key,
       cols: root.cols,
       rows: root.rows,
@@ -1546,9 +1565,10 @@ Item {
               anchors.fill: parent
               // Dead while the help sheet is up, hover included: a move made
               // by a pointer that is only on its way to the sheet is a move
-              // you did not mean.
-              enabled: !root.helpOpen
-              hoverEnabled: !root.helpOpen
+              // you did not mean. Dead until the saved game is back, for the
+              // same reason handleKey is.
+              enabled: root.stateLoaded && !root.helpOpen
+              hoverEnabled: root.stateLoaded && !root.helpOpen
               acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
               cursorShape: root.finished ? Qt.ArrowCursor : Qt.PointingHandCursor
               z: 10

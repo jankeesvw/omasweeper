@@ -60,6 +60,17 @@ There is no bar icon. Omasweeper is a panel-only plugin, so enabling it adds
 one entry to `plugins[]` in `shell.json` and touches the bar layout not at
 all; closing the board lets the shell unload it again.
 
+Coming from 1.0, which did have a bar icon, leaves that icon's layout entry
+behind, and the shell counts the plugin as placed for as long as it is there:
+`omarchy plugin enable` sees nothing left to do and never writes the
+`plugins[]` entry. `install.sh` clears it for you. Updating by hand, the fix
+is a disable and an enable:
+
+```bash
+omarchy plugin disable jankeesvw.omasweeper
+omarchy plugin enable jankeesvw.omasweeper
+```
+
 ## Keyboard
 
 The whole game is playable without touching the mouse, and the motions are
@@ -176,9 +187,11 @@ above.
 ## Playing it from a script
 
 The plugin exposes a test channel, which is how the game was exercised without
-a hand on the mouse:
+a hand on the mouse. It lives in the board, so it only answers while the board
+is open: closing it unloads the plugin, and the channel with it.
 
 ```bash
+omarchy-shell shell summon jankeesvw.omasweeper   # the channel needs an open board
 omarchy-shell jankeesvw.omasweeper.test deal
 omarchy-shell jankeesvw.omasweeper.test play 4 4
 omarchy-shell jankeesvw.omasweeper.test flag 2 4
@@ -191,11 +204,22 @@ omarchy-shell jankeesvw.omasweeper.test snap /tmp/board.png
 
 `board` prints the board as text (`#` covered, `F` flag, `*` mine, `.` opened
 and empty), `state` prints the counters as JSON, and `cursor` prints where the
-keyboard cursor is and whether the key list is up. `key` types keys by name,
-one press per word: `h`, `G`, `$`, `C-d`, `space`, `?`, and `gg` as `g g`,
-which is how you type it anyway. `snap` writes the window to a PNG by
-re-rendering the scene rather than reading the screen, so the board comes out
-even when it is on a workspace you are not looking at.
+keyboard cursor is and whether the key list is up. `state` leads with
+`loaded`, which is false until the saved game has been read back off disk. The
+keyboard and the pointer are dead until it turns true, since the restore
+replaces every cell; the channel is not, so that a harness can test a loading
+board, which means a script that deals should wait for it:
+
+```bash
+until omarchy-shell jankeesvw.omasweeper.test state | jq -e .loaded >/dev/null; do
+  sleep 0.05
+done
+```
+
+`key` types keys by name, one press per word: `h`, `G`, `$`, `C-d`, `space`,
+`?`, and `gg` as `g g`, which is how you type it anyway. `snap` writes the
+window to a PNG by re-rendering the scene rather than reading the screen, so
+the board comes out even when it is on a workspace you are not looking at.
 
 Every entry point goes through the same functions the pointer and the keyboard
 call, so a scripted game and a played one cannot drift apart. There is also
