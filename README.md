@@ -34,24 +34,19 @@ drawing it from the palette rather than pinning colours:
 omarchy plugin add https://github.com/jankeesvw/omasweeper --enable
 ```
 
-Or with the installer, which does the same thing and adds a launcher entry:
+Or with the installer, which does the same thing and adds a launcher entry and a menu row:
 
 ```bash
 ./install.sh
 ```
 
-Then search for **Omasweeper** in the launcher, or bind a key to:
+Then search for **Omasweeper** in the launcher or the Omarchy menu, or bind a key to:
 
 ```bash
 omarchy-shell shell toggle jankeesvw.omasweeper
 ```
 
-A shell plugin is not an application, so nothing gives it a launcher entry on
-its own: `omarchy plugin add` registers code inside the shell process, and the
-launcher only indexes `.desktop` files. `install.sh` writes one to
-`~/.local/share/applications/omasweeper.desktop` whose `Exec` is the same
-toggle a keybinding runs. Adding the plugin without the installer leaves it
-out of the launcher, which is a one-file fix if you want it back.
+A shell plugin is not an application, so nothing puts it anywhere you can click: `omarchy plugin add` registers code inside the shell process, the launcher only indexes `.desktop` files, and the Omarchy menu builds its rows from a JSONC extension. There is no install hook to bridge that, on purpose, since nothing in a plugin should run at install time, so `install.sh` does it: a desktop entry at `~/.local/share/applications/omasweeper.desktop` whose `Exec` is the same toggle a keybinding runs, and a row in `~/.config/omarchy/extensions/omarchy-menu.jsonc` between markers, so a second run replaces it instead of stacking a copy and removing it is three lines. The desktop entry lands under `Game;LogicGame;` and both are searchable on *minesweeper*, *mines* and *game*. Adding the plugin without the installer leaves it out of both, which is a two-file fix if you want it back.
 
 `install.sh` takes one optional override: `OMASWEEPER_REPO` registers the
 plugin from a fork instead.
