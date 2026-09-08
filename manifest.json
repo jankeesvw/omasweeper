@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "jankeesvw.omasweeper",
   "name": "Omasweeper",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "author": "Jankees",
   "license": "MIT",
   "description": "Minesweeper for omarchy-shell, drawn like a TUI: a character grid on hairlines, base-36 gutter labels, ANSI numbers and a status bar. Opens as an ordinary tiled window, plays entirely from the keyboard with vim motions, makes 8-bit noises, and unloads again when you close it. Summon with: omarchy-shell shell toggle jankeesvw.omasweeper",
