@@ -124,7 +124,7 @@ vouching for open anyway.
 | Intermediate | 16 × 16 | 40 |
 | Expert | 30 × 16 | 99 |
 
-The column and row labels are base 36 — `0`-`9` then `a`-`t` — so even an
+The column and row labels are base 36, `0`-`9` then `a`-`t`, so even an
 expert board keeps one character per label.
 
 ## Sound
@@ -170,7 +170,7 @@ rm -rf ~/.local/state/omasweeper
 
 ## What it writes, and what it does not
 
-- `~/.local/state/omasweeper/state.json` — the game in progress, the
+- `~/.local/state/omasweeper/state.json`: the game in progress, the
   difficulty, the mute setting and the best times. Written after each move,
   debounced.
 

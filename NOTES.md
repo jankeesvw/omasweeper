@@ -1,4 +1,4 @@
-# NOTES — Omasweeper (jankeesvw.omasweeper)
+# NOTES: Omasweeper (jankeesvw.omasweeper)
 
 Working notes for this repo. Read before changing `Panel.qml`.
 
@@ -44,8 +44,8 @@ the delegate works its own `x`/`y` out of its index.
 
 **Mutations copy the array and assign it back.** A QML `var` property only
 notifies on assignment, so mutating an array in place leaves the board showing
-the previous move. Every change takes a `slice()`, edits the copy, and assigns
-— which is also why the flood fill collects into one copy and assigns once
+the previous move. Every change takes a `slice()`, edits the copy, and assigns,
+which is also why the flood fill collects into one copy and assigns once
 rather than per cell.
 
 **Mines are laid after the first click**, avoiding that cell and its eight
@@ -99,7 +99,7 @@ loop.
   something else.
 - **ydotool is useless here.** Both absolute and relative `mousemove` moved
   nothing (two ydotoold instances fighting over one socket). That is why the
-  game got a test IPC channel instead of a synthetic-input harness — see the
+  game got a test IPC channel instead of a synthetic-input harness, see the
   README. It turned out to be the better tool anyway: it plays through the
   same functions the pointer calls.
 - **Sounds must be silent while closed.** `newGame()` runs during state
