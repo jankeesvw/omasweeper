@@ -131,9 +131,39 @@ MENU_END="  // <<< ${PLUGIN_ID}"
 MENU_ROW="  \"omasweeper\": {\"icon\":\"\",\"label\":\"Omasweeper\",\"description\":\"Minesweeper, drawn like a TUI\",\"aliases\":[\"minesweeper\",\"mines\"],\"action\":\"omarchy-shell shell toggle ${PLUGIN_ID}\",\"when\":\"test -d \$HOME/.config/omarchy/plugins/${PLUGIN_ID}\"},"
 
 say "==> Adding the menu entry"
-mkdir -p "$(dirname "$MENU_FILE")"
-menu_tmp=$(mktemp)
-if [ ! -s "$MENU_FILE" ]; then
+
+# This runs as you and writes under your config, and it has to stay that way:
+# an installer that follows a symlink somebody planted under ~/.config is
+# writing wherever the link points, with your permissions. So every directory
+# from the config root down to the file is checked to be a real directory
+# owned by this account, the file itself may not be a link, and the new
+# contents go in by renaming a temporary file over the old one. A rename
+# replaces a link rather than writing through it, and the file is whole at
+# every instant, so the menu never reads half a row.
+owned_by_me() {
+  [ ! -L "$1" ] && [ -e "$1" ] && [ "$(stat -c %u "$1")" = "$(id -u)" ]
+}
+menu_dir=$(dirname "$MENU_FILE")
+config_root="${XDG_CONFIG_HOME:-$HOME/.config}"
+menu_tmp=""
+menu_safe=1
+for dir in "$config_root" "$config_root/omarchy" "$menu_dir"; do
+  [ -e "$dir" ] || [ -L "$dir" ] || mkdir "$dir"
+  if ! owned_by_me "$dir" || [ ! -d "$dir" ]; then
+    say "    $dir is a symlink or not owned by you; skipping the menu row"
+    menu_safe=0
+    break
+  fi
+done
+if [ "$menu_safe" -eq 1 ] && { [ -e "$MENU_FILE" ] || [ -L "$MENU_FILE" ]; } \
+   && { ! owned_by_me "$MENU_FILE" || [ ! -f "$MENU_FILE" ]; }; then
+  say "    $MENU_FILE is a symlink or not owned by you; skipping the menu row"
+  menu_safe=0
+fi
+
+if [ "$menu_safe" -eq 0 ]; then
+  :
+elif menu_tmp=$(mktemp "$menu_dir/.omarchy-menu.jsonc.XXXXXX") && [ ! -s "$MENU_FILE" ]; then
   printf '%s\n%s\n%s\n%s\n%s\n' '{' "$MENU_BEGIN" "$MENU_ROW" "$MENU_END" '}' >"$menu_tmp"
 elif grep -qF ">>> ${PLUGIN_ID}" "$MENU_FILE"; then
   awk -v begin="$MENU_BEGIN" -v row="$MENU_ROW" -v end="$MENU_END" \
@@ -157,11 +187,12 @@ elif ! awk -v begin="$MENU_BEGIN" -v row="$MENU_ROW" -v end="$MENU_END" '
 fi
 
 if [ -n "$menu_tmp" ]; then
-  # Written through the existing file rather than moved over it: the shell
-  # watches this path for live edits, and a fresh inode under it can cost the
-  # watcher, and with it the reload that makes the row appear straight away.
-  cat "$menu_tmp" >"$MENU_FILE"
-  rm -f "$menu_tmp"
+  # Same mode as the file it replaces, or the usual one for a new file: mktemp
+  # hands out 0600, which would make a menu the shell could no longer read
+  # under a stricter umask. The rename is what makes this atomic; the menu's
+  # FileView follows the path, not the inode, and reloads as before.
+  if [ -f "$MENU_FILE" ]; then chmod --reference="$MENU_FILE" "$menu_tmp"; else chmod 0644 "$menu_tmp"; fi
+  mv -f -T "$menu_tmp" "$MENU_FILE"
 fi
 
 say ""
