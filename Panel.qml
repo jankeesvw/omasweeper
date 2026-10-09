@@ -628,9 +628,11 @@ Item {
   function label36(n) { return Number(n).toString(36) }
 
   // Three digits, the way the counter on a cabinet game reads.
+  // Keep the sign when extra flags make the remaining mine count negative.
   function pad3(n) {
-    var v = Math.max(0, Math.min(999, Math.floor(n)))
-    return (v < 10 ? "00" : v < 100 ? "0" : "") + v
+    var value = Math.floor(n)
+    var v = Math.min(999, Math.abs(value))
+    return (value < 0 ? "-" : "") + (v < 10 ? "00" : v < 100 ? "0" : "") + v
   }
 
   // ---------------------------------------------------------------- keymap
