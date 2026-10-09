@@ -4,6 +4,7 @@ import QtQuick
 import QtQuick.Shapes
 import qs.Commons
 
+import qs.Commons as Commons
 // Omasweeper, Minesweeper for omarchy-shell. Summoned/toggled through the shell host:
 //   omarchy-shell shell toggle jankeesvw.omasweeper
 // The host calls open(payloadJson) / close() and reads `opened`; it also
@@ -47,12 +48,12 @@ Item {
   // this panel too. Everything on the board is derived from those tokens
   // rather than pinned, so the tiles stay readable on a light theme and a
   // dark one without a second palette to maintain.
-  property color background: Color.menu.background
-  property color foreground: Color.menu.text
-  property color border: Color.menu.border
+  property color background: Commons.Color.menu.background
+  property color foreground: Commons.Color.menu.text
+  property color border: Commons.Color.menu.border
   property var borderSpec: Border.surfaceSpec("menu", "border", border, Math.max(1, Style.space(2)))
-  property color accent: Color.accent
-  property color urgent: Color.urgent
+  property color accent: Commons.Color.accent
+  property color urgent: Commons.Color.urgent
   readonly property int cornerRadius: Style.cornerRadius
   property string fontFamily: Style.font.menuFamily
   property int contentMargin: Style.spacing.panelPadding
